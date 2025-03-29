@@ -1,5 +1,7 @@
 # 音频转换器
 
+[English](README.md) | [中文](README_CN.md)
+
 一个将音频转换为离散表示并使用Transformer模型进行处理的音频处理流水线。
 
 ## 处理流程

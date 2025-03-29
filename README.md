@@ -1,5 +1,7 @@
 # Audio Transformer
 
+[English](README.md) | [中文](README_CN.md)
+
 An audio processing pipeline that transforms audio into discrete representations and processes them with a Transformer model.
 
 ## Pipeline
