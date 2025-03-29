@@ -139,3 +139,40 @@ run.py                   # 主运行脚本
 - torchaudio 0.9.0+
 - librosa 0.8.1+
 - 其他依赖项请查看requirements.txt 
+
+## 默认数据集
+
+为方便起见，我们推荐以下数据集用于训练和评估：
+
+1. **GTZAN流派集合**：
+   - 1000个音频片段（每个30秒）
+   - 10种流派（蓝调、古典、乡村、迪斯科、嘻哈、爵士、金属、流行、雷鬼、摇滚）
+   - 大小：约1.2GB
+   - [下载链接](https://www.kaggle.com/datasets/andradaolteanu/gtzan-dataset-music-genre-classification)
+
+2. **免费口语数字数据集 (FSDD)**：
+   - 适合测试的小型数据集
+   - 口语数字（0-9）有多个说话者
+   - 大小：约10MB
+   - [GitHub仓库](https://github.com/Jakobovski/free-spoken-digit-dataset)
+
+3. **UrbanSound8K**：
+   - 8732个标记的城市声音片段（≤4秒）
+   - 10个类别
+   - 大小：约6GB
+   - [下载链接](https://urbansounddataset.weebly.com/urbansound8k.html)
+
+使用这些数据集进行项目训练：
+
+```bash
+# 对于GTZAN
+python run.py train --audio_dir GTZAN数据路径/genres --model_type vqvae --dataset_type gtzan
+
+# 对于FSDD
+python run.py train --audio_dir FSDD数据路径/recordings --model_type vqvae --dataset_type fsdd
+
+# 对于UrbanSound8K
+python run.py train --audio_dir UrbanSound8K数据路径/audio --model_type vqvae --dataset_type urbansound
+```
+
+项目包含这些常用数据集的内置加载器，可以处理特定的目录结构和元数据格式。 

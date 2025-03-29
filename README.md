@@ -139,3 +139,40 @@ You can customize various parameters:
 - torchaudio 0.9.0+
 - librosa 0.8.1+
 - Additional packages listed in requirements.txt 
+
+## Default Datasets
+
+For convenience, we recommend the following datasets for training and evaluation:
+
+1. **GTZAN Genre Collection**:
+   - 1000 audio tracks (30 seconds each)
+   - 10 genres (blues, classical, country, disco, hiphop, jazz, metal, pop, reggae, rock)
+   - Size: ~1.2GB
+   - [Download link](https://www.kaggle.com/datasets/andradaolteanu/gtzan-dataset-music-genre-classification)
+
+2. **Free Spoken Digit Dataset (FSDD)**:
+   - Smaller dataset ideal for testing
+   - Spoken digits (0-9) with multiple speakers
+   - Size: ~10MB
+   - [GitHub Repository](https://github.com/Jakobovski/free-spoken-digit-dataset)
+
+3. **UrbanSound8K**:
+   - 8732 labeled sound excerpts (≤4s) of urban sounds
+   - 10 classes
+   - Size: ~6GB
+   - [Download link](https://urbansounddataset.weebly.com/urbansound8k.html)
+
+To use these datasets with the project:
+
+```bash
+# For GTZAN
+python run.py train --audio_dir path/to/gtzan/genres --model_type vqvae --dataset_type gtzan
+
+# For FSDD
+python run.py train --audio_dir path/to/fsdd/recordings --model_type vqvae --dataset_type fsdd
+
+# For UrbanSound8K
+python run.py train --audio_dir path/to/urbansound8k/audio --model_type vqvae --dataset_type urbansound
+```
+
+The project includes built-in dataset loaders for these common datasets which handle the specific directory structures and metadata formats. 
