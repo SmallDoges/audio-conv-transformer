@@ -2,135 +2,35 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-An audio processing pipeline that transforms audio into discrete representations and processes them with a Transformer model.
+# Audio Conversion Transformer
 
-## Pipeline
+A PyTorch implementation of an audio processing pipeline with Transformer models that converts audio through the following steps:
 
-1. Audio Processing:
-   - Convert multi-channel audio to mono
-   - Frame segmentation and FFT
-   - Discrete spectrum extraction
-   - Mel filtering
-   - Discrete Mel spectrum (frequency domain discretization)
+1. Multi-channel to mono conversion
+2. Frame segmentation + FFT
+3. Discrete spectrum extraction
+4. Mel filtering
+5. Discrete Mel spectrum (frequency domain discretization)
+6. (Optional) VQ-VAE/clustering for more compact discrete tokens
+7. Transformer input (sequence length = frame count, token dimension = feature dimension)
 
-2. Optional Vector Quantization:
-   - VQ-VAE/clustering for more compact discrete tokens
+## Features
 
-3. Transformer Model:
-   - Sequence length = number of frames
-   - Token dimension = feature dimension
-
-## Architecture Details
-
-### Audio Processing
-- The `AudioProcessor` class handles audio loading, resampling, and feature extraction
-- Audio is converted to mono and processed into mel spectrograms
-- Default parameters: 22050Hz sample rate, 1024 FFT size, 512 hop length, 80 mel bands
-
-### Vector Quantization (VQ-VAE)
-- Compresses continuous mel spectrograms into discrete tokens
-- Consists of an encoder, vector quantizer, and decoder
-- Encoder: Conv1D layers with BatchNorm and ReLU activations
-- Vector Quantizer: Maps continuous vectors to nearest entries in a learned codebook
-- Decoder: Reconstructs mel spectrograms from quantized representations
-
-### Transformer Models
-- Two implementations:
-  1. `AudioTransformer`: Works with discrete tokens from VQ-VAE
-  2. `AudioFeatureTransformer`: Works directly with continuous features
-
-- The standard architecture uses:
-  - 512-dimensional embeddings
-  - 8 attention heads
-  - 6 encoder layers
-  - 6 decoder layers (for full Transformer)
-  - Positional encoding for sequence awareness
+- Complete audio processing pipeline from raw audio to mel spectrograms
+- Vector Quantized Variational Autoencoder (VQ-VAE) for discrete audio representation
+- Transformer models for sequence modeling of audio features
+- Support for both discrete token-based processing (with VQ-VAE) and continuous feature processing
+- Built-in training and inference pipelines
+- Integration with 🤗 Hugging Face's `datasets` and `transformers` libraries
+- Visualization tools for audio analysis
 
 ## Installation
 
-1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/audio-conv-transformer.git
+git clone https://github.com/username/audio-conv-transformer.git
 cd audio-conv-transformer
-```
-
-2. Install the required packages:
-```bash
 pip install -r requirements.txt
 ```
-
-## Usage
-
-### Quick Demo
-Run the demo script to test audio processing and visualization:
-```bash
-python demo.py --audio_file path/to/audio.wav
-```
-
-### Training
-Train the VQ-VAE model:
-```bash
-python run.py train --audio_dir path/to/audio_files --model_type vqvae --batch_size 16 --num_epochs 100
-```
-
-Train the Transformer model (after training VQ-VAE):
-```bash
-python run.py train --audio_dir path/to/audio_files --model_type transformer --vqvae_checkpoint checkpoints/vqvae_epoch_100.pt
-```
-
-Train the Feature Transformer (without VQ-VAE):
-```bash
-python run.py train --audio_dir path/to/audio_files --model_type feature_transformer
-```
-
-### Inference
-Process an audio file and visualize the results:
-```bash
-python run.py inference --vqvae_checkpoint checkpoints/vqvae_epoch_100.pt --audio_file path/to/audio.wav
-```
-
-Generate audio using the transformer model:
-```bash
-python run.py inference --vqvae_checkpoint checkpoints/vqvae_epoch_100.pt --transformer_checkpoint checkpoints/transformer_epoch_100.pt --generate
-```
-
-## Project Structure
-
-```
-audio_transformer/
-├── __init__.py          # Package initialization
-├── data/                # Data processing scripts and datasets
-├── models/              # Neural network models
-│   ├── __init__.py      # Models package initialization
-│   ├── transformer.py   # Transformer model implementations
-│   └── vq_vae.py        # VQ-VAE model implementation
-└── utils/               # Utility functions
-    ├── __init__.py      # Utils package initialization
-    └── audio_processing.py  # Audio processing utilities
-demo.py                  # Demo script for visualization
-requirements.txt         # Package dependencies
-run.py                   # Main runner script
-```
-
-## Advanced Configuration
-
-You can customize various parameters:
-
-- Audio processing parameters:
-  - `--sample_rate`: Audio sample rate (default: 22050)
-  - `--n_fft`: FFT size (default: 1024)
-  - `--hop_length`: Hop length (default: 512)
-  - `--n_mels`: Number of mel bands (default: 80)
-
-- Training parameters:
-  - `--learning_rate`: Learning rate (default: 1e-4)
-  - `--batch_size`: Batch size (default: 16)
-  - `--num_epochs`: Number of training epochs (default: 100)
-  - `--val_split`: Validation split ratio (default: 0.1)
-
-- Generation parameters:
-  - `--max_length`: Maximum sequence length for generation (default: 1000)
-  - `--temperature`: Sampling temperature (default: 1.0)
 
 ## Requirements
 
@@ -138,6 +38,8 @@ You can customize various parameters:
 - PyTorch 1.9.0+
 - torchaudio 0.9.0+
 - librosa 0.8.1+
+- datasets 2.10.0+
+- transformers 4.26.0+
 - Additional packages listed in requirements.txt 
 
 ## Default Datasets
@@ -175,4 +77,138 @@ python run.py train --audio_dir path/to/fsdd/recordings --model_type vqvae --dat
 python run.py train --audio_dir path/to/urbansound8k/audio --model_type vqvae --dataset_type urbansound
 ```
 
-The project includes built-in dataset loaders for these common datasets which handle the specific directory structures and metadata formats. 
+The project includes built-in dataset loaders for these common datasets which handle the specific directory structures and metadata formats.
+
+## Usage
+
+### Training a VQ-VAE model
+
+```bash
+python run.py train \
+  --model_type vqvae \
+  --dataset_type gtzan \
+  --audio_dir path/to/audio/files \
+  --batch_size 32 \
+  --num_epochs 100 \
+  --learning_rate 1e-4 \
+  --output_dir ./checkpoints/vqvae
+```
+
+### Training a Transformer model (requires pre-trained VQ-VAE)
+
+```bash
+python run.py train \
+  --model_type transformer \
+  --dataset_type gtzan \
+  --audio_dir path/to/audio/files \
+  --vqvae_checkpoint ./checkpoints/vqvae \
+  --batch_size 16 \
+  --num_epochs 100 \
+  --learning_rate 5e-5 \
+  --output_dir ./checkpoints/transformer
+```
+
+### Inference with VQ-VAE and Transformer
+
+```bash
+python run.py inference \
+  --vqvae_checkpoint ./checkpoints/vqvae \
+  --transformer_checkpoint ./checkpoints/transformer \
+  --audio_file path/to/audio.wav
+```
+
+### Demo Mode
+
+For a quick demonstration, run:
+
+```bash
+python demo.py \
+  --audio_file path/to/audio.wav \
+  --vqvae_checkpoint ./checkpoints/vqvae
+```
+
+## Advanced Features
+
+### Configuration Options
+
+You can configure the audio processing parameters:
+
+```bash
+python run.py train \
+  --model_type vqvae \
+  --dataset_type custom \
+  --audio_dir path/to/audio/files \
+  --sample_rate 22050 \
+  --n_fft 1024 \
+  --hop_length 512 \
+  --n_mels 80 \
+  --codebook_size 8192 \
+  --codebook_dim 64 \
+  --hidden_dim 512
+```
+
+### Continuous Feature Transformer
+
+To train a Transformer directly on continuous features (without VQ-VAE):
+
+```bash
+python run.py train \
+  --model_type feature_transformer \
+  --dataset_type custom \
+  --audio_dir path/to/audio/files
+```
+
+## Project Structure
+
+- **audio_transformer/**
+  - **data/**: Data loading and processing modules
+  - **models/**: Model definitions (VQ-VAE, Transformer)
+  - **utils/**: Utility functions and training helpers
+- **run.py**: Main script for training and inference
+- **demo.py**: Demo script for quick testing
+
+## Architecture Details
+
+### VQ-VAE
+
+The VQ-VAE consists of:
+- An encoder that compresses the mel spectrogram into a latent space
+- A vector quantization layer that maps continuous features to a discrete codebook
+- A decoder that reconstructs the mel spectrogram from the quantized representation
+
+### Transformer Models
+
+Two types of transformer models are implemented:
+1. **AudioTransformer**: Works with discrete tokens from VQ-VAE
+2. **AudioFeatureTransformer**: Works directly with continuous mel spectrogram features
+
+Both are based on Hugging Face's transformer architectures, using either BERT or Wav2Vec2 as the underlying model.
+
+## Integration with 🤗 Hugging Face Libraries
+
+This project leverages Hugging Face's ecosystem in several ways:
+
+1. **Datasets**: Uses the `datasets` library for efficient data loading, caching, and preprocessing
+   - Supports loading from local files or directly from the Hugging Face Hub
+   - Built-in dataset loading for common audio datasets
+
+2. **Transformers**: Models extend the `PreTrainedModel` class for seamless integration
+   - Compatible with the Hugging Face model hub
+   - Can use existing pretrained models as a base
+   - Supports standard methods like `from_pretrained()` and `save_pretrained()`
+
+3. **Training**: Uses the `Trainer` API for efficient training loops
+   - Handles checkpointing, logging, and evaluation
+   - Supports early stopping and other training optimizations
+
+## License
+
+[MIT License](LICENSE)
+
+## Acknowledgements
+
+- [Hugging Face Transformers](https://github.com/huggingface/transformers)
+- [Hugging Face Datasets](https://github.com/huggingface/datasets)
+- [VQ-VAE paper](https://arxiv.org/abs/1711.00937)
+- [PyTorch](https://pytorch.org/)
+- [librosa](https://librosa.org/) 

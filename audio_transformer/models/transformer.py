@@ -3,6 +3,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
+import numpy as np
+from transformers import (
+    PreTrainedModel, 
+    BertConfig, 
+    BertModel,
+    Wav2Vec2Config,
+    Wav2Vec2Model,
+    GPT2Config, 
+    GPT2Model,
+    PretrainedConfig
+)
+from typing import Optional, Tuple, Dict, Any, Union
 
 
 class PositionalEncoding(nn.Module):
@@ -41,245 +53,407 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:, :x.size(1)]
 
 
-class AudioTransformer(nn.Module):
-    """
-    Transformer model for audio representation learning
-    """
+class AudioTransformerConfig(PretrainedConfig):
+    """Configuration class for AudioTransformer model"""
+    model_type = "audio_transformer"
+    
     def __init__(
         self,
-        vocab_size=512,  # Number of discrete tokens in the codebook
-        d_model=512,     # Embedding dimension
-        nhead=8,         # Number of attention heads
-        num_encoder_layers=6,
-        num_decoder_layers=6,
-        dim_feedforward=2048,
-        dropout=0.1,
-        max_seq_length=5000
+        vocab_size: int = 8192,  # Size of the codebook for VQ-VAE
+        hidden_size: int = 512,
+        num_hidden_layers: int = 6,
+        num_attention_heads: int = 8,
+        intermediate_size: int = 2048,
+        hidden_act: str = "gelu",
+        hidden_dropout_prob: float = 0.1,
+        attention_probs_dropout_prob: float = 0.1,
+        max_position_embeddings: int = 2048,
+        initializer_range: float = 0.02,
+        layer_norm_eps: float = 1e-12,
+        use_vq: bool = True,
+        **kwargs
     ):
-        """
-        Args:
-            vocab_size: Size of vocabulary (number of discrete tokens)
-            d_model: Hidden dimensionality of the model
-            nhead: Number of attention heads
-            num_encoder_layers: Number of transformer encoder layers
-            num_decoder_layers: Number of transformer decoder layers
-            dim_feedforward: Dimensionality of feedforward network in transformer
-            dropout: Dropout probability
-            max_seq_length: Maximum sequence length
-        """
-        super(AudioTransformer, self).__init__()
-        
+        super().__init__(**kwargs)
         self.vocab_size = vocab_size
-        self.d_model = d_model
-        
-        # Token embedding layer
-        self.embedding = nn.Embedding(vocab_size, d_model)
-        
-        # Positional encoding
-        self.pos_encoder = PositionalEncoding(d_model, max_seq_length)
-        
-        # Transformer
-        self.transformer = nn.Transformer(
-            d_model=d_model,
-            nhead=nhead,
-            num_encoder_layers=num_encoder_layers,
-            num_decoder_layers=num_decoder_layers,
-            dim_feedforward=dim_feedforward,
-            dropout=dropout,
-            batch_first=True
-        )
-        
-        # Output projection
-        self.output_projection = nn.Linear(d_model, vocab_size)
-        
-        # Initialize parameters
-        self._init_parameters()
-    
-    def _init_parameters(self):
-        """
-        Initialize the parameters of the model
-        """
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-    
-    def forward(self, src, tgt, src_mask=None, tgt_mask=None, memory_mask=None):
-        """
-        Args:
-            src: Source sequence [batch_size, src_seq_len]
-            tgt: Target sequence [batch_size, tgt_seq_len]
-            src_mask: Source sequence mask
-            tgt_mask: Target sequence mask (usually a causal mask)
-            memory_mask: Memory mask
-            
-        Returns:
-            Output tensor of shape [batch_size, tgt_seq_len, vocab_size]
-        """
-        # Create masks if not provided
-        if src_mask is None:
-            src_mask = self._generate_square_mask(src.size(1), src.device)
-        if tgt_mask is None:
-            tgt_mask = self._generate_square_subsequent_mask(tgt.size(1), tgt.device)
-        
-        # Embed tokens
-        src_emb = self.embedding(src) * math.sqrt(self.d_model)
-        tgt_emb = self.embedding(tgt) * math.sqrt(self.d_model)
-        
-        # Add positional encoding
-        src_emb = self.pos_encoder(src_emb)
-        tgt_emb = self.pos_encoder(tgt_emb)
-        
-        # Apply transformer
-        output = self.transformer(
-            src_emb, tgt_emb, 
-            src_mask=src_mask, 
-            tgt_mask=tgt_mask, 
-            memory_mask=memory_mask
-        )
-        
-        # Project to vocabulary
-        output = self.output_projection(output)
-        
-        return output
-    
-    def encode(self, src, src_mask=None):
-        """
-        Encode source sequence
-        
-        Args:
-            src: Source sequence [batch_size, src_seq_len]
-            src_mask: Source mask
-            
-        Returns:
-            Memory tensor from the encoder
-        """
-        if src_mask is None:
-            src_mask = self._generate_square_mask(src.size(1), src.device)
-        
-        src_emb = self.embedding(src) * math.sqrt(self.d_model)
-        src_emb = self.pos_encoder(src_emb)
-        
-        memory = self.transformer.encoder(src_emb, src_mask)
-        return memory
-    
-    def decode(self, tgt, memory, tgt_mask=None, memory_mask=None):
-        """
-        Decode target sequence given memory from encoder
-        
-        Args:
-            tgt: Target sequence [batch_size, tgt_seq_len]
-            memory: Memory from encoder [batch_size, src_seq_len, d_model]
-            tgt_mask: Target mask
-            memory_mask: Memory mask
-            
-        Returns:
-            Output tensor from the decoder
-        """
-        if tgt_mask is None:
-            tgt_mask = self._generate_square_subsequent_mask(tgt.size(1), tgt.device)
-        
-        tgt_emb = self.embedding(tgt) * math.sqrt(self.d_model)
-        tgt_emb = self.pos_encoder(tgt_emb)
-        
-        output = self.transformer.decoder(tgt_emb, memory, tgt_mask, memory_mask)
-        output = self.output_projection(output)
-        
-        return output
-    
-    def _generate_square_mask(self, sz, device):
-        """
-        Generate mask for padding (0s in the sequence)
-        """
-        mask = (torch.ones((sz, sz), device=device) == 1)
-        return mask
-    
-    def _generate_square_subsequent_mask(self, sz, device):
-        """
-        Generate causal mask for the decoder
-        """
-        mask = (torch.triu(torch.ones((sz, sz), device=device), diagonal=1) == 0)
-        return mask
+        self.hidden_size = hidden_size
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
+        self.intermediate_size = intermediate_size
+        self.hidden_act = hidden_act
+        self.hidden_dropout_prob = hidden_dropout_prob
+        self.attention_probs_dropout_prob = attention_probs_dropout_prob
+        self.max_position_embeddings = max_position_embeddings
+        self.initializer_range = initializer_range
+        self.layer_norm_eps = layer_norm_eps
+        self.use_vq = use_vq
 
 
-class AudioFeatureTransformer(nn.Module):
+class AudioTransformer(PreTrainedModel):
     """
-    Transformer model for processing continuous audio features directly
-    (without quantization)
+    Transformer model for audio processing
+    Uses BERT architecture from transformers library
+    
+    Works with discrete tokens from VQ-VAE
     """
+    config_class = AudioTransformerConfig
+    base_model_prefix = "audio_transformer"
+    
+    def __init__(self, config: AudioTransformerConfig):
+        super().__init__(config)
+        
+        # Create BERT config for the underlying model
+        bert_config = BertConfig(
+            vocab_size=config.vocab_size,
+            hidden_size=config.hidden_size,
+            num_hidden_layers=config.num_hidden_layers,
+            num_attention_heads=config.num_attention_heads,
+            intermediate_size=config.intermediate_size,
+            hidden_act=config.hidden_act,
+            hidden_dropout_prob=config.hidden_dropout_prob,
+            attention_probs_dropout_prob=config.attention_probs_dropout_prob,
+            max_position_embeddings=config.max_position_embeddings,
+            layer_norm_eps=config.layer_norm_eps,
+            pad_token_id=0,
+        )
+        
+        # Use a pre-trained BERT model
+        self.bert = BertModel(bert_config)
+        
+        # Output layers
+        self.output = nn.Linear(config.hidden_size, config.vocab_size)
+        
+        # Loss function
+        self.loss_fn = nn.CrossEntropyLoss()
+        
+        # Initialize weights
+        self.init_weights()
+    
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        token_type_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        return_dict: Optional[bool] = None,
+        **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        
+        # Pass through BERT
+        outputs = self.bert(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            return_dict=return_dict,
+        )
+        
+        # Get the hidden states
+        hidden_states = outputs.last_hidden_state
+        
+        # Pass through output layer
+        logits = self.output(hidden_states)
+        
+        loss = None
+        if labels is not None:
+            # Shift labels for autoregressive training
+            shifted_logits = logits[:, :-1].contiguous()
+            shifted_labels = labels[:, 1:].contiguous()
+            # Flatten the tokens
+            loss = self.loss_fn(
+                shifted_logits.view(-1, self.config.vocab_size),
+                shifted_labels.view(-1)
+            )
+        
+        if not return_dict:
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+            
+        return {
+            "loss": loss,
+            "logits": logits,
+            "hidden_states": outputs.hidden_states,
+            "attentions": outputs.attentions,
+        }
+    
+    def generate(
+        self,
+        input_ids: torch.Tensor,
+        max_length: int = 100,
+        temperature: float = 1.0,
+        top_k: int = 0,
+        top_p: float = 0.9,
+        repetition_penalty: float = 1.0,
+        do_sample: bool = True,
+        **kwargs
+    ) -> torch.Tensor:
+        """Generate tokens autoregressively"""
+        batch_size = input_ids.shape[0]
+        cur_len = input_ids.shape[1]
+        
+        # Initialize attention mask
+        attention_mask = torch.ones_like(input_ids)
+        
+        while cur_len < max_length:
+            # Prepare model inputs
+            model_inputs = {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "return_dict": True,
+            }
+            
+            # Forward pass
+            outputs = self.forward(**model_inputs)
+            next_token_logits = outputs["logits"][:, -1, :]
+            
+            # Apply temperature
+            if temperature != 1.0:
+                next_token_logits = next_token_logits / temperature
+            
+            # Apply repetition penalty
+            if repetition_penalty != 1.0:
+                # Clone so we don't modify the original logits
+                next_token_logits_for_ban = next_token_logits.clone()
+                
+                # Get previous tokens
+                prev_tokens = input_ids
+                
+                # Update logits for previously seen tokens
+                for batch_idx in range(batch_size):
+                    for token_idx in prev_tokens[batch_idx].unique():
+                        if token_idx != 0:  # Don't penalize padding tokens
+                            next_token_logits_for_ban[batch_idx, token_idx] /= repetition_penalty
+                
+                next_token_logits = next_token_logits_for_ban
+            
+            # Top-k sampling
+            if top_k > 0:
+                indices_to_remove = next_token_logits < torch.topk(next_token_logits, top_k)[0][..., -1, None]
+                next_token_logits[indices_to_remove] = -float("Inf")
+            
+            # Top-p sampling
+            if top_p < 1.0:
+                sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                
+                # Remove tokens with cumulative probability above the threshold
+                sorted_indices_to_remove = cumulative_probs > top_p
+                
+                # Shift the indices to the right to keep the first token above the threshold
+                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                sorted_indices_to_remove[..., 0] = 0
+                
+                for batch_idx in range(batch_size):
+                    indices_to_remove = sorted_indices[batch_idx][sorted_indices_to_remove[batch_idx]]
+                    next_token_logits[batch_idx, indices_to_remove] = -float("Inf")
+            
+            # Sample from the filtered distribution
+            if do_sample:
+                probs = F.softmax(next_token_logits, dim=-1)
+                next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
+            else:
+                next_tokens = torch.argmax(next_token_logits, dim=-1)
+            
+            # Add generated tokens to input_ids and attention_mask
+            input_ids = torch.cat([input_ids, next_tokens.unsqueeze(-1)], dim=-1)
+            attention_mask = torch.cat([attention_mask, torch.ones_like(next_tokens.unsqueeze(-1))], dim=-1)
+            
+            # Update current length
+            cur_len = input_ids.shape[1]
+        
+        return input_ids
+
+
+class AudioFeatureTransformerConfig(PretrainedConfig):
+    """Configuration class for AudioFeatureTransformer model"""
+    model_type = "audio_feature_transformer"
+    
     def __init__(
         self,
-        input_dim=80,     # Input dimension (number of mel bands)
-        d_model=512,      # Model dimension
-        nhead=8,          # Number of attention heads
-        num_layers=6,     # Number of encoder layers
-        dim_feedforward=2048,
-        dropout=0.1,
-        max_seq_length=5000
+        feature_dim: int = 80,  # Mel spectrogram feature dimension
+        hidden_size: int = 512,
+        num_hidden_layers: int = 6,
+        num_attention_heads: int = 8,
+        intermediate_size: int = 2048,
+        hidden_act: str = "gelu",
+        hidden_dropout_prob: float = 0.1,
+        attention_probs_dropout_prob: float = 0.1,
+        max_position_embeddings: int = 2048,
+        initializer_range: float = 0.02,
+        layer_norm_eps: float = 1e-12,
+        **kwargs
     ):
-        """
-        Args:
-            input_dim: Input feature dimension (number of mel bands)
-            d_model: Hidden dimensionality of the model
-            nhead: Number of attention heads
-            num_layers: Number of transformer encoder layers
-            dim_feedforward: Dimensionality of feedforward network in transformer
-            dropout: Dropout probability
-            max_seq_length: Maximum sequence length
-        """
-        super(AudioFeatureTransformer, self).__init__()
+        super().__init__(**kwargs)
+        self.feature_dim = feature_dim
+        self.hidden_size = hidden_size
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
+        self.intermediate_size = intermediate_size
+        self.hidden_act = hidden_act
+        self.hidden_dropout_prob = hidden_dropout_prob
+        self.attention_probs_dropout_prob = attention_probs_dropout_prob
+        self.max_position_embeddings = max_position_embeddings
+        self.initializer_range = initializer_range
+        self.layer_norm_eps = layer_norm_eps
+
+
+class AudioFeatureTransformer(PreTrainedModel):
+    """
+    Transformer model for audio processing that works directly with continuous features
+    Uses Wav2Vec2 architecture from transformers library
+    """
+    config_class = AudioFeatureTransformerConfig
+    base_model_prefix = "audio_feature_transformer"
+    
+    def __init__(self, config: AudioFeatureTransformerConfig):
+        super().__init__(config)
         
-        self.input_dim = input_dim
-        self.d_model = d_model
-        
-        # Feature projection
-        self.input_projection = nn.Linear(input_dim, d_model)
-        
-        # Positional encoding
-        self.pos_encoder = PositionalEncoding(d_model, max_seq_length)
-        
-        # Transformer encoder
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=dim_feedforward,
-            dropout=dropout,
-            batch_first=True
+        # Create Wav2Vec2 config for the underlying model
+        wav2vec2_config = Wav2Vec2Config(
+            hidden_size=config.hidden_size,
+            num_hidden_layers=config.num_hidden_layers,
+            num_attention_heads=config.num_attention_heads,
+            intermediate_size=config.intermediate_size,
+            hidden_act=config.hidden_act,
+            hidden_dropout=config.hidden_dropout_prob,
+            attention_dropout=config.attention_probs_dropout_prob,
+            layer_norm_eps=config.layer_norm_eps,
+            initializer_range=config.initializer_range,
+            vocab_size=1,  # Not really used for feature processing
         )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
         
-        # Output projection
-        self.output_projection = nn.Linear(d_model, input_dim)
+        # Feature projection layer
+        self.feature_projection = nn.Sequential(
+            nn.Linear(config.feature_dim, config.hidden_size),
+            nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps),
+            nn.Dropout(config.hidden_dropout_prob),
+        )
         
-        # Initialize parameters
-        self._init_parameters()
+        # Position embeddings
+        self.position_embeddings = nn.Embedding(
+            config.max_position_embeddings, config.hidden_size
+        )
+        
+        # Use Wav2Vec2 model (without feature extraction layers)
+        self.transformer = Wav2Vec2Model(wav2vec2_config)
+        
+        # Output layers for regression
+        self.output = nn.Linear(config.hidden_size, config.feature_dim)
+        
+        # Loss function
+        self.loss_fn = nn.MSELoss()
+        
+        # Initialize weights
+        self.init_weights()
+        
+        # Register buffer for position ids
+        self.register_buffer(
+            "position_ids", 
+            torch.arange(config.max_position_embeddings).expand((1, -1))
+        )
     
-    def _init_parameters(self):
-        """
-        Initialize the parameters of the model
-        """
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-    
-    def forward(self, x, mask=None):
-        """
-        Args:
-            x: Input features [batch_size, seq_length, input_dim]
-            mask: Attention mask
+    def forward(
+        self,
+        features: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        return_dict: Optional[bool] = None,
+        **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        batch_size, seq_length, _ = features.size()
+        
+        # Create position ids
+        position_ids = self.position_ids[:, :seq_length]
+        
+        # Get position embeddings
+        position_embeddings = self.position_embeddings(position_ids)
+        
+        # Project features to hidden size
+        hidden_states = self.feature_projection(features)
+        
+        # Add position embeddings
+        hidden_states = hidden_states + position_embeddings
+        
+        # Create attention mask if not provided
+        if attention_mask is None:
+            attention_mask = torch.ones((batch_size, seq_length), device=features.device)
+        
+        # Extend the attention mask for the transformer
+        extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+        extended_attention_mask = extended_attention_mask.to(dtype=self.dtype)
+        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+        
+        # Pass through transformer
+        outputs = self.transformer(
+            inputs_embeds=hidden_states,
+            attention_mask=extended_attention_mask,
+            return_dict=return_dict,
+        )
+        
+        # Get the hidden states
+        hidden_states = outputs.last_hidden_state
+        
+        # Pass through output layer
+        predicted_features = self.output(hidden_states)
+        
+        loss = None
+        if labels is not None:
+            loss = self.loss_fn(predicted_features, labels)
+        
+        if not return_dict:
+            output = (predicted_features,) + outputs[1:]
+            return ((loss,) + output) if loss is not None else output
             
-        Returns:
-            Output features [batch_size, seq_length, input_dim]
-        """
-        # Project input to model dimension
-        x = self.input_projection(x)
+        return {
+            "loss": loss,
+            "predicted_features": predicted_features,
+            "hidden_states": outputs.hidden_states,
+            "attentions": outputs.attentions,
+        }
+    
+    def generate(
+        self,
+        features: torch.Tensor,
+        max_length: int = 100,
+        **kwargs
+    ) -> torch.Tensor:
+        """Generate features autoregressively"""
+        batch_size = features.shape[0]
+        cur_len = features.shape[1]
+        feature_dim = features.shape[2]
         
-        # Add positional encoding
-        x = self.pos_encoder(x)
+        # Initialize attention mask
+        attention_mask = torch.ones((batch_size, cur_len), device=features.device)
         
-        # Apply transformer encoder
-        x = self.transformer_encoder(x, src_key_padding_mask=mask)
+        # Initialize generated features
+        generated_features = features.clone()
         
-        # Project back to input dimension
-        x = self.output_projection(x)
+        while cur_len < max_length:
+            # Prepare model inputs
+            model_inputs = {
+                "features": generated_features,
+                "attention_mask": attention_mask,
+                "return_dict": True,
+            }
+            
+            # Forward pass
+            outputs = self.forward(**model_inputs)
+            next_features = outputs["predicted_features"][:, -1:, :]
+            
+            # Add generated features
+            generated_features = torch.cat([generated_features, next_features], dim=1)
+            
+            # Update attention mask
+            attention_mask = torch.cat(
+                [attention_mask, torch.ones((batch_size, 1), device=features.device)],
+                dim=1
+            )
+            
+            # Update current length
+            cur_len = generated_features.shape[1]
         
-        return x 
+        return generated_features 

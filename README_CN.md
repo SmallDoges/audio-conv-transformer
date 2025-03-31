@@ -138,6 +138,8 @@ run.py                   # 主运行脚本
 - PyTorch 1.9.0+
 - torchaudio 0.9.0+
 - librosa 0.8.1+
+- datasets 2.10.0+
+- transformers 4.26.0+
 - 其他依赖项请查看requirements.txt 
 
 ## 默认数据集
