@@ -3,8 +3,8 @@ import torch
 import numpy as np
 import os
 from audio_transformer.utils.audio_processing import AudioProcessor, load_and_process_audio, mel_to_audio
-from audio_transformer.models.vq_vae import VQVAE
-from audio_transformer.models.transformer import AudioTransformer, AudioFeatureTransformer
+from audio_transformer.models.vq_vae import VQVAE, VQVAEConfig
+from audio_transformer.models.transformer import AudioTransformer, AudioFeatureTransformer, AudioTransformerConfig, AudioFeatureTransformerConfig
 from audio_transformer.data.data_loader import AudioDataModule
 import tempfile
 
@@ -36,12 +36,13 @@ class TestVQVAE(unittest.TestCase):
     def test_vqvae_initialization(self):
         # Test model initialization
         try:
-            model = VQVAE(
-                in_channels=80,
-                hidden_dims=[128, 256],
-                embedding_dim=64,
-                num_embeddings=512
+            config = VQVAEConfig(
+                input_dim=80,
+                hidden_dim=128,
+                codebook_size=512,
+                codebook_dim=64
             )
+            model = VQVAE(config)
             self.assertIsInstance(model, VQVAE)
         except Exception as e:
             self.fail(f"VQVAE initialization failed: {e}")
@@ -53,21 +54,24 @@ class TestVQVAE(unittest.TestCase):
         time_steps = 100
         mel_spec = torch.randn(batch_size, n_mels, time_steps)
         
-        model = VQVAE(
-            in_channels=n_mels,
-            hidden_dims=[128, 256],
-            embedding_dim=64,
-            num_embeddings=512
+        config = VQVAEConfig(
+            input_dim=n_mels,
+            hidden_dim=128,
+            codebook_size=512,
+            codebook_dim=64
         )
+        model = VQVAE(config)
         
         # Test forward pass
         try:
-            reconstructed, vq_loss, encoding_indices = model(mel_spec)
+            outputs = model(mel_spec, return_dict=True)
             
             # Check output shape
-            self.assertEqual(reconstructed.shape, mel_spec.shape)
-            self.assertIsInstance(vq_loss, torch.Tensor)
-            self.assertEqual(encoding_indices.shape[0], batch_size)
+            self.assertEqual(outputs["reconstructed"].shape, mel_spec.shape)
+            self.assertIsInstance(outputs["loss"], torch.Tensor)
+            # The quantized_indices are flattened, so we need to reshape
+            indices_shape = outputs["quantized_indices"].shape[0]
+            self.assertEqual(indices_shape, batch_size * time_steps)
         except Exception as e:
             self.fail(f"VQVAE forward pass failed: {e}")
 
@@ -75,13 +79,13 @@ class TestTransformer(unittest.TestCase):
     def test_transformer_initialization(self):
         # Test model initialization
         try:
-            model = AudioTransformer(
+            config = AudioTransformerConfig(
                 vocab_size=512,
-                d_model=512,
-                nhead=8,
-                num_encoder_layers=6,
-                num_decoder_layers=6
+                hidden_size=512,
+                num_hidden_layers=6,
+                num_attention_heads=8
             )
+            model = AudioTransformer(config)
             self.assertIsInstance(model, AudioTransformer)
         except Exception as e:
             self.fail(f"AudioTransformer initialization failed: {e}")
@@ -89,12 +93,13 @@ class TestTransformer(unittest.TestCase):
     def test_feature_transformer_initialization(self):
         # Test model initialization
         try:
-            model = AudioFeatureTransformer(
-                input_dim=80,
-                d_model=512,
-                nhead=8,
-                num_layers=6
+            config = AudioFeatureTransformerConfig(
+                feature_dim=80,
+                hidden_size=512,
+                num_hidden_layers=6,
+                num_attention_heads=8
             )
+            model = AudioFeatureTransformer(config)
             self.assertIsInstance(model, AudioFeatureTransformer)
         except Exception as e:
             self.fail(f"AudioFeatureTransformer initialization failed: {e}")
