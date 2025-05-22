@@ -78,7 +78,7 @@ class VectorQuantizer(nn.Module):
             - codebook_loss: Codebook loss (0 if using EMA update)
         """
         # Flatten input
-        flat_inputs = inputs.reshape(-1, self.codebook_dim)
+        flat_inputs = inputs.view(-1, self.codebook_dim)
         
         # Calculate distances between inputs and codebook entries
         distances = torch.sum(flat_inputs ** 2, dim=1, keepdim=True) + \
@@ -93,7 +93,7 @@ class VectorQuantizer(nn.Module):
         quantized = torch.matmul(encodings, self.codebook)
         
         # Reshape to match input shape
-        quantized = quantized.reshape(inputs.shape)
+        quantized = quantized.view(inputs.shape)
         
         # Calculate loss
         if training:
@@ -355,12 +355,12 @@ class VQVAE(PreTrainedModel):
         batch_size = indices.size(0)
         
         # Convert indices to one-hot encodings
-        flat_indices = indices.reshape(-1)
+        flat_indices = indices.view(-1)
         encodings = F.one_hot(flat_indices, self.config.codebook_size).float()
         
         # Get quantized vectors
         quantized = torch.matmul(encodings, self.quantizer.codebook)
-        quantized = quantized.reshape(batch_size, sequence_length, self.config.codebook_dim)
+        quantized = quantized.view(batch_size, sequence_length, self.config.codebook_dim)
         
         # Permute for decoder
         quantized = quantized.permute(0, 2, 1)  # [B, C, T]
