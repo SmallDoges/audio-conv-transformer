@@ -1,8 +1,6 @@
-# Audio Transformer
+# Audio Conversion Transformer
 
 [English](README.md) | [中文](README_CN.md)
-
-# Audio Conversion Transformer
 
 A PyTorch implementation of an audio processing pipeline with Transformer models that converts audio through the following steps:
 
@@ -27,7 +25,7 @@ A PyTorch implementation of an audio processing pipeline with Transformer models
 ## Installation
 
 ```bash
-git clone https://github.com/username/audio-conv-transformer.git
+git clone https://github.com/SmallDoges/audio-conv-transformer.git
 cd audio-conv-transformer
 pip install -r requirements.txt
 ```
