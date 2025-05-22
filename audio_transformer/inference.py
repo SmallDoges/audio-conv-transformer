@@ -7,8 +7,8 @@ import numpy as np
 from pathlib import Path
 
 from utils.audio_processing import AudioProcessor
-from models.vq_vae import VQVAE
-from models.transformer import AudioTransformer, AudioFeatureTransformer
+from models.vq_vae import VQVAE, VQVAEConfig
+from models.transformer import AudioTransformer, AudioFeatureTransformer, AudioTransformerConfig, AudioFeatureTransformerConfig
 
 
 def plot_spectrogram(spec, title=None, save_path=None):
@@ -144,12 +144,14 @@ def generate_from_transformer(
     with torch.no_grad():
         for _ in range(max_length):
             # Get prediction
-            # Use src=tgt for autoregressive generation
-            tgt_mask = transformer_model._generate_square_subsequent_mask(current_tokens.size(1), device)
-            output = transformer_model(current_tokens, current_tokens, tgt_mask=tgt_mask)
+            outputs = transformer_model(
+                input_ids=current_tokens,
+                attention_mask=torch.ones_like(current_tokens),
+                return_dict=True
+            )
             
             # Get next token distribution (last position)
-            next_token_logits = output[:, -1, :] / temperature
+            next_token_logits = outputs["logits"][:, -1, :] / temperature
             
             # Sample from distribution
             probs = torch.softmax(next_token_logits, dim=-1)
@@ -159,7 +161,8 @@ def generate_from_transformer(
             current_tokens = torch.cat([current_tokens, next_token], dim=1)
         
         # Decode to mel spectrogram using VQ-VAE
-        generated_mel = vqvae_model._decode(current_tokens)
+        sequence_length = current_tokens.size(1)
+        generated_mel = vqvae_model.decode_from_indices(current_tokens, sequence_length)
     
     return current_tokens, generated_mel
 
@@ -194,12 +197,14 @@ def process_audio(
     audio_processor = AudioProcessor()
     
     # Load VQ-VAE model
-    vqvae_model = VQVAE(
-        in_channels=80,  # Mel bands
-        hidden_dims=[128, 256],
-        embedding_dim=64,
-        num_embeddings=512
+    vqvae_config = VQVAEConfig(
+        input_dim=80,  # Mel bands
+        hidden_dim=128,
+        codebook_size=512,
+        codebook_dim=64,
+        num_conv_layers=3
     )
+    vqvae_model = VQVAE(vqvae_config)
     
     vqvae_checkpoint = torch.load(vqvae_checkpoint, map_location=device)
     vqvae_model.load_state_dict(vqvae_checkpoint["model_state_dict"])
@@ -220,13 +225,13 @@ def process_audio(
     # Generate new audio with transformer if requested
     if generate and transformer_checkpoint:
         # Load transformer model
-        transformer_model = AudioTransformer(
-            vocab_size=512,  # Should match VQ-VAE num_embeddings
-            d_model=512,
-            nhead=8,
-            num_encoder_layers=6,
-            num_decoder_layers=6
+        transformer_config = AudioTransformerConfig(
+            vocab_size=512,  # Should match VQ-VAE codebook_size
+            hidden_size=512,
+            num_hidden_layers=6,
+            num_attention_heads=8
         )
+        transformer_model = AudioTransformer(transformer_config)
         
         transformer_checkpoint = torch.load(transformer_checkpoint, map_location=device)
         transformer_model.load_state_dict(transformer_checkpoint["model_state_dict"])
