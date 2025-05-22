@@ -10,7 +10,7 @@ import soundfile as sf
 import logging
 
 from audio_transformer.models.vq_vae import VQVAE, VQVAEConfig
-from audio_transformer.utils.audio_processing import load_and_process_audio
+from audio_transformer.utils.audio_processing import load_and_process_audio as utils_load_and_process_audio
 
 # Configure logging
 logging.basicConfig(
@@ -69,7 +69,7 @@ def parse_args():
     return args
 
 
-def load_and_process_audio(file_path, sample_rate=22050, n_fft=1024, hop_length=512, n_mels=80):
+def process_audio_file(file_path, sample_rate=22050, n_fft=1024, hop_length=512, n_mels=80):
     """Load and process audio file into mel spectrogram"""
     # Load audio
     logger.info(f"Loading audio file: {file_path}")
@@ -117,7 +117,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     
     # Load and process audio
-    audio, mel_spec = load_and_process_audio(
+    audio, mel_spec = process_audio_file(
         args.audio_file,
         sample_rate=args.sample_rate,
         n_fft=args.n_fft,

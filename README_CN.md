@@ -50,7 +50,7 @@
 
 1. 克隆仓库:
 ```bash
-git clone https://github.com/yourusername/audio-conv-transformer.git
+git clone https://github.com/SmallDoges/audio-conv-transformer.git
 cd audio-conv-transformer
 ```
 
